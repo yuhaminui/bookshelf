@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>本棚</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23EAE3D2'/%3E%3Crect x='13' y='18' width='9' height='32' fill='%233E5443'/%3E%3Crect x='25' y='10' width='9' height='40' fill='%23A9762F'/%3E%3Crect x='37' y='22' width='9' height='28' fill='%232B2A22'/%3E%3Crect x='10' y='50' width='44' height='4' rx='1' fill='%236B6754'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --paper: #EAE3D2;
+    --paper-dark: #DED4BC;
+    --ink: #2B2A22;
+    --ink-soft: #6B6754;
+    --spine-read: #3E5443;
+    --spine-read-dark: #2E4033;
+    --spine-want: #A9762F;
+    --spine-want-dark: #8A5F24;
+    --rule: #C6BB9E;
+    --card: #F4EFE3;
+    --danger: #8C3B32;
+    --info: #3F5163;
+    --radius: 3px;
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin:0; padding:0; }
+  body{
+    background: var(--paper);
+    background-image:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.015) 0px, rgba(0,0,0,0.015) 1px, transparent 1px, transparent 3px);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app{ max-width: 640px; margin: 0 auto; padding: 28px 18px 80px; }
+
+  header{ margin-bottom: 18px; }
+  .spine-label{
+    display: inline-block; font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 28px;
+    letter-spacing: 0.01em; color: var(--ink); border-bottom: 3px solid var(--ink); padding-bottom: 4px;
+  }
+  .tagline{ font-size: 13px; color: var(--ink-soft); margin-top: 8px; }
+
+  .account-bar{
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius);
+    padding: 10px 12px; margin-top: 14px; font-size: 13px;
+  }
+  .account-bar .who{ display: flex; align-items: center; gap: 8px; color: var(--ink-soft); min-width: 0; }
+  .account-bar .who img{ width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; }
+  .account-bar .who span{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .account-bar button{
+    background: none; border: 1px solid var(--rule); border-radius: var(--radius);
+    padding: 6px 10px; font-family: 'Inter', sans-serif; font-size: 12.5px; color: var(--ink); cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* Login screen */
+  .login-screen{ text-align: center; padding: 70px 20px; }
+  .login-screen .glyph{ font-family: 'Source Serif 4', serif; font-size: 40px; margin-bottom: 14px; }
+  .login-screen p{ font-size: 14px; color: var(--ink-soft); margin: 6px 0 24px; line-height: 1.6; }
+  .google-btn{
+    display: inline-flex; align-items: center; gap: 10px;
+    background: #fff; border: 1px solid var(--rule); border-radius: var(--radius);
+    padding: 11px 18px; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600;
+    color: var(--ink); cursor: pointer;
+  }
+  .google-btn:active{ background: var(--paper-dark); }
+  .login-error{ margin-top: 16px; font-size: 13px; color: var(--danger); max-width: 400px; margin-left: auto; margin-right: auto; line-height: 1.6; }
+
+  .main-area{ display: none; }
+  .main-area.visible{ display: block; }
+
+  .add-toggle{
+    width: 100%; text-align: left; background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius);
+    padding: 12px 14px; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; color: var(--ink);
+    cursor: pointer; margin: 18px 0 14px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .add-toggle:active{ background: var(--paper-dark); }
+  .add-toggle .plus{ font-family: 'Source Serif 4', serif; font-size: 18px; line-height: 1; color: var(--spine-read); }
+
+  .add-form{
+    background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 18px; display: none;
+  }
+  .add-form.open{ display: block; }
+
+  .search-row{ display: flex; gap: 8px; margin-bottom: 4px; }
+  .search-row input{
+    flex: 1; padding: 9px 10px; border: 1px solid var(--rule); border-radius: var(--radius);
+    background: #fff; font-family: 'Inter', sans-serif; font-size: 15px; color: var(--ink);
+  }
+  .search-row button{
+    padding: 9px 14px; background: var(--info); color: #fff; border: none; border-radius: var(--radius);
+    font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  .search-hint{ font-size: 11.5px; color: var(--ink-soft); margin: 6px 0 14px; line-height: 1.5; }
+  .search-status{ font-size: 13px; color: var(--ink-soft); padding: 8px 0; }
+  .search-status.error{ color: var(--danger); }
+  .search-results{
+    display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px;
+    max-height: 280px; overflow-y: auto; padding-right: 2px;
+  }
+  .result-item{
+    display: flex; gap: 10px; padding: 8px; border: 1px solid var(--rule); border-radius: var(--radius);
+    background: #fff; cursor: pointer; text-align: left;
+  }
+  .result-item:active{ background: var(--paper-dark); }
+  .result-cover{ width: 38px; height: 54px; object-fit: cover; border-radius: 2px; background: var(--paper-dark); flex-shrink: 0; }
+  .result-cover.placeholder{
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Source Serif 4', serif; color: var(--ink-soft); font-size: 16px;
+  }
+  .result-text{ min-width: 0; }
+  .result-title{ font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+  .result-meta{ font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
+
+  .divider-label{ font-size: 11px; color: var(--ink-soft); text-align: center; margin: 12px 0; position: relative; }
+  .divider-label::before, .divider-label::after{ content: ''; position: absolute; top: 50%; width: 38%; height: 1px; background: var(--rule); }
+  .divider-label::before{ left: 0; }
+  .divider-label::after{ right: 0; }
+
+  .field{ margin-bottom: 12px; }
+  .field label{ display: block; font-size: 11px; color: var(--ink-soft); margin-bottom: 5px; letter-spacing: 0.02em; }
+  .field input[type=text]{
+    width: 100%; padding: 9px 10px; border: 1px solid var(--rule); border-radius: var(--radius);
+    background: #fff; font-family: 'Inter', sans-serif; font-size: 15px; color: var(--ink);
+  }
+  .field input[type=text]:focus{ outline: 2px solid var(--spine-read); outline-offset: 1px; }
+
+  .cover-preview-row{ display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .cover-preview{ width: 46px; height: 64px; border-radius: 2px; object-fit: cover; background: var(--paper-dark); flex-shrink: 0; }
+  .cover-preview.placeholder{ display: flex; align-items: center; justify-content: center; font-family: 'Source Serif 4', serif; color: var(--ink-soft); font-size: 18px; }
+  .cover-preview-note{ font-size: 11.5px; color: var(--ink-soft); }
+
+  .choice-row{ display: flex; gap: 8px; }
+  .choice-row button{
+    flex: 1; padding: 9px 6px; border: 1px solid var(--rule); background: #fff; border-radius: var(--radius);
+    font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; color: var(--ink-soft); cursor: pointer;
+  }
+  .choice-row button.active[data-status="read"]{ background: var(--spine-read); border-color: var(--spine-read); color: #fff; }
+  .choice-row button.active[data-status="want"]{ background: var(--spine-want); border-color: var(--spine-want); color: #fff; }
+  .choice-row button.active[data-format]{ background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+  .form-actions{ display: flex; gap: 8px; margin-top: 14px; }
+  .btn-primary{
+    flex: 1; padding: 10px; background: var(--ink); color: var(--paper); border: none; border-radius: var(--radius);
+    font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .btn-primary:active{ background: #000; }
+  .btn-primary:disabled{ opacity: 0.5; cursor: default; }
+  .btn-secondary{
+    padding: 10px 14px; background: transparent; color: var(--ink-soft); border: 1px solid var(--rule);
+    border-radius: var(--radius); font-family: 'Inter', sans-serif; font-size: 14px; cursor: pointer;
+  }
+
+  .shelf-search-row{ margin-top: 4px; margin-bottom: 12px; }
+  .shelf-search-row input{
+    width: 100%; padding: 9px 10px; border: 1px solid var(--rule); border-radius: var(--radius);
+    background: var(--card); font-family: 'Inter', sans-serif; font-size: 14px; color: var(--ink);
+  }
+  .shelf-search-row input:focus{ outline: 2px solid var(--spine-read); outline-offset: 1px; }
+
+  .controls{
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--rule); padding-bottom: 10px; margin-bottom: 4px; gap: 8px; flex-wrap: wrap;
+  }
+  .filters{ display: flex; gap: 4px; }
+  .filters button{
+    background: none; border: none; font-family: 'Inter', sans-serif; font-size: 13px; color: var(--ink-soft);
+    padding: 5px 9px; cursor: pointer; border-radius: var(--radius);
+  }
+  .filters button.active{ color: var(--ink); font-weight: 700; background: var(--paper-dark); }
+  .sort-controls{ display: flex; gap: 2px; }
+  .sort-btn{
+    background: none; border: none; font-family: 'Inter', sans-serif; font-size: 12px; color: var(--ink-soft);
+    padding: 5px 8px; cursor: pointer; display: flex; align-items: center; gap: 3px; border-radius: var(--radius);
+  }
+  .sort-btn.active{ color: var(--ink); font-weight: 700; background: var(--paper-dark); }
+  .sort-btn .arrow{ font-size: 10px; }
+
+  .shelf{ margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .book{ display: flex; background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
+  .book .spine{ width: 8px; flex-shrink: 0; background: var(--spine-read); }
+  .book[data-status="want"] .spine{ background: var(--spine-want); }
+  .book-cover{ width: 42px; height: 60px; margin: 10px 0 10px 10px; object-fit: cover; border-radius: 2px; flex-shrink: 0; background: var(--paper-dark); }
+  .book-cover.placeholder{ display: flex; align-items: center; justify-content: center; font-family: 'Source Serif 4', serif; color: var(--ink-soft); font-size: 17px; }
+  .book-body{ flex: 1; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+  .book-text{ min-width: 0; }
+  .book-title{ font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 700; color: var(--ink); line-height: 1.35; overflow-wrap: break-word; }
+  .book-author{ font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+  .book-tags{ display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+  .tag{ font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 2px; color: var(--spine-read); border: 1px solid var(--spine-read); }
+  .book[data-status="want"] .tag.status-tag{ color: var(--spine-want-dark); border-color: var(--spine-want-dark); }
+  .tag.format-tag{ color: var(--ink-soft); border-color: var(--rule); }
+  .book-actions{ display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .icon-btn{ background: none; border: none; padding: 6px; cursor: pointer; color: var(--ink-soft); font-size: 15px; line-height: 1; border-radius: var(--radius); }
+  .icon-btn:active{ background: var(--paper-dark); }
+  .icon-btn.delete{ color: var(--danger); }
+
+  .empty{ text-align: center; padding: 50px 20px; color: var(--ink-soft); }
+  .empty .glyph{ font-family: 'Source Serif 4', serif; font-size: 34px; color: var(--ink); margin-bottom: 10px; }
+  .empty p{ font-size: 14px; margin: 4px 0; }
+
+  .count-row{ font-size: 12px; color: var(--ink-soft); margin: 10px 2px 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="spine-label">本棚</div>
+    <div class="tagline">読んだ本と、これから読む本を並べておく場所</div>
+    <div class="account-bar" id="accountBar" style="display:none;"></div>
+  </header>
+
+  <div class="login-screen" id="loginScreen">
+    <div class="glyph">— · · · —</div>
+    <p>Googleアカウントでログインすると、どの端末からでも<br>同じ本棚が見られます。</p>
+    <button class="google-btn" id="googleLoginBtn">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9c1.7-1.57 2.7-3.88 2.7-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.83.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.66 9c0-.59.1-1.17.29-1.7V4.97H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
+      <span>Googleでログイン</span>
+    </button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+
+  <div class="main-area" id="mainArea">
+    <button class="add-toggle" id="addToggle">
+      <span>本を登録する</span>
+      <span class="plus">＋</span>
+    </button>
+
+    <div class="add-form" id="addForm">
+      <div class="search-row">
+        <input type="text" id="searchInput" placeholder="タイトルや著者名（断片でOK）">
+        <button type="button" id="searchBtn">検索</button>
+      </div>
+      <div class="search-hint">2文字以上入力すると、Google Booksと国立国会図書館サーチの両方から候補を探します（文庫化・重版なども見つかりやすくなります）。タップすると、タイトル・著者・表紙・出版社・発行年月日を自動で入力します。</div>
+      <div id="searchStatus"></div>
+      <div class="search-results" id="searchResults"></div>
+
+      <div class="divider-label">登録する内容</div>
+
+      <div class="cover-preview-row" id="coverPreviewRow">
+        <div class="cover-preview placeholder" id="coverPreview">—</div>
+        <div class="field" style="flex: 1; margin-bottom: 0;">
+          <label for="coverUrlInput">表紙画像URL（任意・手動で貼り付け可）</label>
+          <input type="text" id="coverUrlInput" placeholder="見つからない場合はURLを貼り付け">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="titleInput">タイトル</label>
+        <input type="text" id="titleInput" placeholder="例：吾輩は猫である">
+      </div>
+      <div class="field">
+        <label for="authorInput">著者名</label>
+        <input type="text" id="authorInput" placeholder="例：夏目漱石">
+      </div>
+      <div class="field">
+        <label for="publishedInput">発行年月日</label>
+        <input type="text" id="publishedInput" placeholder="例：1905-10-15（年だけでもOK）">
+      </div>
+
+      <div class="field">
+        <label>判型</label>
+        <div class="choice-row" id="formatChoice">
+          <button type="button" data-format="bunko">文庫</button>
+          <button type="button" data-format="tankobon">単行本</button>
+          <button type="button" data-format="other" class="active">その他</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>状態</label>
+        <div class="choice-row" id="statusChoice">
+          <button type="button" data-status="want" class="active">読みたい</button>
+          <button type="button" data-status="read">読んだ</button>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-secondary" id="cancelAdd">キャンセル</button>
+        <button class="btn-primary" id="submitAdd">棚に追加</button>
+      </div>
+    </div>
+
+    <div class="shelf-search-row">
+      <input type="text" id="shelfSearchInput" placeholder="本棚の中をタイトル・著者で検索">
+    </div>
+
+    <div class="controls">
+      <div class="filters" id="filters">
+        <button data-filter="all" class="active">すべて</button>
+        <button data-filter="read">読んだ</button>
+        <button data-filter="want">読みたい</button>
+      </div>
+      <div class="sort-controls" id="sortControls">
+        <button class="sort-btn active" data-sort="title"><span>タイトル</span><span class="arrow">▲</span></button>
+        <button class="sort-btn" data-sort="author"><span>著者</span><span class="arrow">▲</span></button>
+      </div>
+    </div>
+
+    <div class="count-row" id="countRow"></div>
+    <div class="shelf" id="shelf"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var firebaseConfig = {
+    apiKey: "AIzaSyCB7NwVdPARl5T8R4aIdlNTt2saWmBU1Qw",
+    authDomain: "my-bookshelf-dd9ea.firebaseapp.com",
+    projectId: "my-bookshelf-dd9ea",
+    storageBucket: "my-bookshelf-dd9ea.firebasestorage.app",
+    messagingSenderId: "90310213541",
+    appId: "1:90310213541:web:ba94bdf0bc27a4c339724c"
+  };
+  firebase.initializeApp(firebaseConfig);
+  var auth = firebase.auth();
+  var db = firebase.firestore();
+  var provider = new firebase.auth.GoogleAuthProvider();
+
+  var books = [];
+  var unsubscribeBooks = null;
+  var currentUser = null;
+  var filter = 'all';
+  var shelfQuery = '';
+  var sortKey = 'title';
+  var sortDir = { title: 1, author: 1 };
+  var editingStatus = 'want';
+  var editingFormat = 'other';
+  var editingCoverUrl = '';
+  var editingMeta = {};
+
+  var loginScreen = document.getElementById('loginScreen');
+  var loginError = document.getElementById('loginError');
+  var googleLoginBtn = document.getElementById('googleLoginBtn');
+  var accountBar = document.getElementById('accountBar');
+  var mainArea = document.getElementById('mainArea');
+
+  var shelf = document.getElementById('shelf');
+  var countRow = document.getElementById('countRow');
+  var addToggle = document.getElementById('addToggle');
+  var addForm = document.getElementById('addForm');
+  var titleInput = document.getElementById('titleInput');
+  var authorInput = document.getElementById('authorInput');
+  var publishedInput = document.getElementById('publishedInput');
+  var searchInput = document.getElementById('searchInput');
+  var searchBtn = document.getElementById('searchBtn');
+  var searchStatus = document.getElementById('searchStatus');
+  var searchResults = document.getElementById('searchResults');
+  var coverPreview = document.getElementById('coverPreview');
+  var coverUrlInput = document.getElementById('coverUrlInput');
+  var statusChoice = document.getElementById('statusChoice');
+  var formatChoice = document.getElementById('formatChoice');
+  var submitAdd = document.getElementById('submitAdd');
+  var cancelAdd = document.getElementById('cancelAdd');
+  var filtersEl = document.getElementById('filters');
+  var sortControls = document.getElementById('sortControls');
+  var shelfSearchInput = document.getElementById('shelfSearchInput');
+
+  function collator(){ return new Intl.Collator('ja', { usage: 'sort', sensitivity: 'base' }); }
+
+  function booksCollection(uid){
+    return db.collection('users').doc(uid).collection('books');
+  }
+
+  function startBooksListener(uid){
+    if(unsubscribeBooks) unsubscribeBooks();
+    unsubscribeBooks = booksCollection(uid).onSnapshot(function(snapshot){
+      books = snapshot.docs.map(function(d){
+        var data = d.data();
+        data.id = d.id;
+        return data;
+      });
+      render();
+    }, function(err){
+      countRow.textContent = 'データの取得に失敗しました: ' + err.message;
+    });
+  }
+
+  googleLoginBtn.addEventListener('click', function(){
+    loginError.textContent = '';
+    auth.signInWithPopup(provider).catch(function(err){
+      loginError.textContent = 'ログインに失敗しました（' + err.code + '）。埋め込み表示だとGoogleログインがブロックされることがあります。この画面を実際のブラウザ（Chromeなど）で開いて試してください。';
+    });
+  });
+
+  document.getElementById('accountBar').addEventListener('click', function(e){
+    var btn = e.target.closest('[data-action="logout"]');
+    if(btn) auth.signOut();
+  });
+
+  auth.onAuthStateChanged(function(user){
+    currentUser = user;
+    if(user){
+      loginScreen.style.display = 'none';
+      mainArea.classList.add('visible');
+      accountBar.style.display = 'flex';
+      accountBar.innerHTML =
+        '<div class="who">' +
+          (user.photoURL ? '<img src="' + user.photoURL + '">' : '') +
+          '<span>' + escapeHtml(user.displayName || user.email || 'ログイン中') + '</span>' +
+        '</div>' +
+        '<button data-action="logout">ログアウト</button>';
+      startBooksListener(user.uid);
+      openForm();
+    } else {
+      loginScreen.style.display = 'block';
+      mainArea.classList.remove('visible');
+      accountBar.style.display = 'none';
+      accountBar.innerHTML = '';
+      if(unsubscribeBooks){ unsubscribeBooks(); unsubscribeBooks = null; }
+      books = [];
+    }
+  });
+
+  function openForm(){
+    addForm.classList.add('open');
+    addToggle.style.display = 'none';
+    searchInput.focus();
+  }
+  function resetFormFields(){
+    titleInput.value = '';
+    authorInput.value = '';
+    publishedInput.value = '';
+    searchInput.value = '';
+    searchResults.innerHTML = '';
+    searchStatus.innerHTML = '';
+    editingStatus = 'want';
+    editingFormat = 'other';
+    editingCoverUrl = '';
+    coverUrlInput.value = '';
+    editingMeta = {};
+    updateChoiceButtons(statusChoice, 'status', editingStatus);
+    updateChoiceButtons(formatChoice, 'format', editingFormat);
+    updateCoverPreview();
+  }
+  function closeForm(){
+    addForm.classList.remove('open');
+    addToggle.style.display = 'flex';
+    resetFormFields();
+  }
+  function updateChoiceButtons(container, attr, value){
+    container.querySelectorAll('button').forEach(function(b){
+      b.classList.toggle('active', b.getAttribute('data-' + attr) === value);
+    });
+  }
+  function updateCoverPreview(){
+    if(editingCoverUrl){
+      coverPreview.className = 'cover-preview';
+      coverPreview.innerHTML = '';
+      var img = document.createElement('img');
+      img.src = editingCoverUrl;
+      img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover'; img.style.borderRadius = '2px';
+      coverPreview.appendChild(img);
+    } else {
+      coverPreview.className = 'cover-preview placeholder';
+      coverPreview.textContent = '—';
+    }
+  }
+  coverUrlInput.addEventListener('input', function(){
+    editingCoverUrl = coverUrlInput.value.trim();
+    updateCoverPreview();
+  });
+
+  addToggle.addEventListener('click', openForm);
+  cancelAdd.addEventListener('click', closeForm);
+  statusChoice.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    editingStatus = btn.getAttribute('data-status');
+    updateChoiceButtons(statusChoice, 'status', editingStatus);
+  });
+  formatChoice.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    editingFormat = btn.getAttribute('data-format');
+    updateChoiceButtons(formatChoice, 'format', editingFormat);
+  });
+
+  function guessFormatFromHeight(heightStr){
+    if(!heightStr) return null;
+    var h = parseFloat(heightStr);
+    if(isNaN(h)) return null;
+    if(h <= 16) return 'bunko';
+    if(h <= 22) return 'tankobon';
+    return null;
+  }
+  function pickThumbnail(imageLinks){
+    if(!imageLinks) return '';
+    var url = imageLinks.thumbnail || imageLinks.smallThumbnail || '';
+    return url.replace('http://', 'https://');
+  }
+  function findIsbn13(identifiers){
+    if(!identifiers) return '';
+    var found = identifiers.find(function(i){ return i.type === 'ISBN_13'; });
+    return found ? found.identifier : '';
+  }
+  function normalizeIsbn(s){
+    return (s || '').replace(/[^0-9Xx]/g, '');
+  }
+
+  async function searchGoogleBooks(q, useIntitle){
+    var queryText = useIntitle ? ('intitle:' + q) : q;
+    var url = 'https://www.googleapis.com/books/v1/volumes?maxResults=25&q=' + encodeURIComponent(queryText) + '&key=AIzaSyA33zI1dZYOEzWpfts8MWa2v4dAGTjih9Y';
+    var res = await fetch(url);
+    if(!res.ok) throw new Error('Google Books status ' + res.status);
+    var data = await res.json();
+    return (data.items || []).map(function(item){
+      var vi = item.volumeInfo || {};
+      return {
+        title: vi.title || '(タイトル不明)',
+        authors: (vi.authors || []).join('、'),
+        publisher: vi.publisher || '',
+        publishedDate: vi.publishedDate || '',
+        thumb: pickThumbnail(vi.imageLinks),
+        isbn13: normalizeIsbn(findIsbn13(vi.industryIdentifiers)),
+        formatGuess: guessFormatFromHeight(vi.dimensions && vi.dimensions.height),
+        source: 'google'
+      };
+    });
+  }
+
+  async function searchNdl(q){
+    var url = 'https://ndlsearch.ndl.go.jp/api/opensearch?title=' + encodeURIComponent(q) + '&cnt=30&dctype=book';
+    var res = await fetch(url);
+    if(!res.ok) throw new Error('NDL status ' + res.status);
+    var text = await res.text();
+    var xml = new DOMParser().parseFromString(text, 'text/xml');
+    if(xml.querySelector('parsererror')){ throw new Error('NDLの応答を解釈できませんでした'); }
+    var items = Array.prototype.slice.call(xml.getElementsByTagName('item'));
+    return items.map(function(item){
+      function getTag(tag){
+        var el = item.getElementsByTagName(tag)[0];
+        return el ? (el.textContent || '').trim() : '';
+      }
+      var title = getTag('title');
+      var creatorEls = Array.prototype.slice.call(item.getElementsByTagName('dc:creator'));
+      var creator = creatorEls.map(function(el){ return (el.textContent || '').trim(); }).filter(Boolean).join('、');
+      var publisher = getTag('dc:publisher');
+      var pubDate = getTag('pubDate') || getTag('dc:date') || getTag('dcterms:issued');
+      var seriesTitle = getTag('dcndl:seriesTitle');
+      var isbn = '';
+      var isbn10 = '';
+      var idEls = item.getElementsByTagName('dc:identifier');
+      for(var i = 0; i < idEls.length; i++){
+        var xsiType = idEls[i].getAttribute('xsi:type') || '';
+        if(xsiType === 'dcndl:ISBN13'){ isbn = normalizeIsbn(idEls[i].textContent); break; }
+        if(xsiType === 'dcndl:ISBN'){ isbn10 = normalizeIsbn(idEls[i].textContent); }
+      }
+      if(!isbn) isbn = isbn10;
+      var formatGuess = null;
+      if(seriesTitle && seriesTitle.indexOf('文庫') !== -1) formatGuess = 'bunko';
+      return {
+        title: title || '(タイトル不明)',
+        authors: creator,
+        publisher: publisher,
+        publishedDate: (pubDate || '').slice(0, 10),
+        thumb: '',
+        isbn13: isbn,
+        formatGuess: formatGuess,
+        source: 'ndl'
+      };
+    });
+  }
+
+  function guessFormatFromHankeidokuji(s){
+    if(!s) return null;
+    if(s.indexOf('文庫') !== -1) return 'bunko';
+    if(/46|四六|Ａ５|A5|Ｂ６|B6|Ｂ５|B5|菊/.test(s)) return 'tankobon';
+    return null;
+  }
+
+  async function fetchOpenBdInfo(isbns){
+    var result = {};
+    if(isbns.length === 0) return result;
+    try{
+      var url = 'https://api.openbd.jp/v1/get?isbn=' + isbns.join(',');
+      var res = await fetch(url);
+      if(!res.ok) return result;
+      var data = await res.json();
+      data.forEach(function(rec, idx){
+        if(!rec) return;
+        var cover = (rec.summary && rec.summary.cover) ? rec.summary.cover : '';
+        var hankei = (rec.hanmoto && rec.hanmoto.hankeidokuji) ? rec.hanmoto.hankeidokuji : '';
+        result[isbns[idx]] = { cover: cover, hankeidokuji: hankei };
+      });
+    }catch(e){ console.error('openBD fetch error:', e); }
+    return result;
+  }
+
+  function dedupeCandidates(list){
+    var seen = {};
+    var out = [];
+    list.forEach(function(c){
+      var key = c.isbn13 ? 'isbn:' + c.isbn13 : 'ta:' + c.title + '|' + c.authors;
+      if(seen[key]) return;
+      seen[key] = true;
+      out.push(c);
+    });
+    return out;
+  }
+
+  async function fetchRawCandidates(q){
+    var results = await Promise.allSettled([
+      searchGoogleBooks(q, false),
+      searchGoogleBooks(q, true),
+      searchNdl(q)
+    ]);
+    var googlePlain = results[0].status === 'fulfilled' ? results[0].value : [];
+    var googleTitle = results[1].status === 'fulfilled' ? results[1].value : [];
+    var ndl = results[2].status === 'fulfilled' ? results[2].value : [];
+    var errors = [];
+    if(results[0].status === 'rejected') errors.push('Google Books: ' + results[0].reason.message);
+    if(results[2].status === 'rejected') errors.push('NDL Search: ' + results[2].reason.message);
+    return { candidates: googlePlain.concat(googleTitle).concat(ndl), errors: errors };
+  }
+
+  async function searchAllSources(q){
+    var first = await fetchRawCandidates(q);
+    var sourceErrors = first.errors;
+
+    // Google Books・NDL Searchのどちらも、部分一致のキーワード検索では
+    // タイトルに実際には含まれていない緩い候補を返してくることがある。
+    // そこで両方の候補に対して「タイトルまたは著者名に実際に含まれているか」
+    // 「含まれている場合、どれだけその一致が本文全体に占める割合が高いか」
+    // で絞り込み・並べ替えを行う。
+    var qLower = q.toLowerCase();
+    function normalizeText(t){
+      return (t || '').toLowerCase().replace(/[\s「『【（(）】』」\u3000]/g, '');
+    }
+    function relevanceScore(c){
+      var t = normalizeText(c.title);
+      var a = normalizeText(c.authors);
+      var scores = [];
+      if(t.indexOf(qLower) !== -1) scores.push(qLower.length / Math.max(t.length, 1));
+      if(a.indexOf(qLower) !== -1) scores.push((qLower.length / Math.max(a.length, 1)) * 0.9);
+      if(scores.length === 0) return null;
+      return Math.max.apply(null, scores);
+    }
+
+    var allRaw = first.candidates.slice();
+
+    // 確度の高い一致（ほぼタイトルそのもの）が見つかったら、
+    // その確定タイトルで裏側からもう一度検索をかけ直し、
+    // 同じ作品の他の版（文庫・単行本・コミカライズなど）を取りこぼさないようにする。
+    var firstScored = first.candidates
+      .map(function(c){ return { c: c, score: relevanceScore(c) }; })
+      .filter(function(x){ return x.score !== null; })
+      .sort(function(a, b){ return b.score - a.score; });
+    var strongMatch = firstScored.length > 0 && firstScored[0].score >= 0.5 ? firstScored[0].c : null;
+    if(strongMatch && strongMatch.title !== q){
+      try{
+        var second = await fetchRawCandidates(strongMatch.title);
+        allRaw = allRaw.concat(second.candidates);
+        sourceErrors = sourceErrors.concat(second.errors);
+      }catch(e){ /* 追加検索の失敗は無視して最初の結果だけ使う */ }
+    }
+
+    var scored = dedupeCandidates(allRaw)
+      .map(function(c){ return { c: c, score: relevanceScore(c) }; })
+      .filter(function(x){ return x.score !== null && x.score >= 0.18; })
+      .sort(function(a, b){ return b.score - a.score; })
+      .slice(0, 20);
+
+    var isbnsToLookup = scored.filter(function(x){ return x.c.isbn13; }).map(function(x){ return x.c.isbn13; });
+    if(isbnsToLookup.length > 0){
+      var info = await fetchOpenBdInfo(isbnsToLookup);
+      scored.forEach(function(x){
+        var rec = x.c.isbn13 ? info[x.c.isbn13] : null;
+        if(!rec) return;
+        if(!x.c.thumb && rec.cover) x.c.thumb = rec.cover;
+        var hankeiFormat = guessFormatFromHankeidokuji(rec.hankeidokuji);
+        if(hankeiFormat){
+          x.c.formatGuess = hankeiFormat;
+          x.c.formatSource = 'hankeidokuji';
+        }
+      });
+    }
+
+    // 関連度が近い候補同士では、表紙画像がある方を上に表示する
+    var combined = scored
+      .sort(function(a, b){
+        if(Math.abs(a.score - b.score) > 0.2) return b.score - a.score;
+        var aHas = a.c.thumb ? 1 : 0, bHas = b.c.thumb ? 1 : 0;
+        if(aHas !== bHas) return bHas - aHas;
+        return b.score - a.score;
+      })
+      .slice(0, 15)
+      .map(function(x){ return x.c; });
+
+    return { candidates: combined, errors: sourceErrors };
+  }
+
+  var searchRequestSeq = 0;
+
+  async function runSearch(isAuto){
+    var q = searchInput.value.trim().replace(/[\s\u3000]/g, '');
+    if(!q){
+      if(!isAuto) searchStatus.innerHTML = '<div class="search-status error">検索語を入力してください</div>';
+      else { searchStatus.innerHTML = ''; searchResults.innerHTML = ''; }
+      return;
+    }
+    if(isAuto && q.length < 2){
+      searchStatus.innerHTML = '';
+      searchResults.innerHTML = '';
+      return;
+    }
+    var seq = ++searchRequestSeq;
+    searchStatus.innerHTML = '<div class="search-status">検索中…</div>';
+    try{
+      var out = await searchAllSources(q);
+      if(seq !== searchRequestSeq) return;
+      var candidates = out.candidates;
+
+      if(candidates.length === 0){
+        searchStatus.innerHTML = out.errors.length > 0
+          ? '<div class="search-status error">検索に失敗しました: ' + escapeHtml(out.errors.join(' / ')) + '</div>'
+          : '<div class="search-status">見つかりませんでした。手動で入力してください。</div>';
+        searchResults.innerHTML = '';
+        return;
+      }
+
+      searchStatus.innerHTML = out.errors.length > 0
+        ? '<div class="search-status error">一部の検索元でエラー: ' + escapeHtml(out.errors.join(' / ')) + '（他の結果は表示しています）</div>'
+        : '';
+      searchResults.innerHTML = '';
+      candidates.forEach(function(c){
+        var title = c.title;
+        var authors = c.authors || '著者不明';
+        var thumb = c.thumb;
+
+        var row = document.createElement('div');
+        row.className = 'result-item';
+
+        var coverEl;
+        if(thumb){
+          coverEl = document.createElement('img');
+          coverEl.className = 'result-cover';
+          coverEl.src = thumb;
+        } else {
+          coverEl = document.createElement('div');
+          coverEl.className = 'result-cover placeholder';
+          coverEl.textContent = title.charAt(0);
+        }
+        row.appendChild(coverEl);
+
+        var textEl = document.createElement('div');
+        textEl.className = 'result-text';
+        var metaParts = [];
+        if(c.publisher) metaParts.push(c.publisher);
+        if(c.publishedDate) metaParts.push(c.publishedDate.slice(0,4));
+        var formatLabelText;
+        if(c.formatGuess === 'bunko') formatLabelText = c.formatSource === 'hankeidokuji' ? '文庫（判型データ）' : '文庫サイズ推定';
+        else if(c.formatGuess === 'tankobon') formatLabelText = c.formatSource === 'hankeidokuji' ? '単行本（判型データ）' : '単行本サイズ推定';
+        else formatLabelText = 'サイズ情報なし';
+        metaParts.push(formatLabelText);
+        metaParts.push(c.source === 'ndl' ? 'NDL' : 'Google Books');
+        textEl.innerHTML = '<div class="result-title">' + escapeHtml(title) + '</div>' +
+          '<div class="result-meta">' + escapeHtml(authors) + '</div>' +
+          '<div class="result-meta">' + escapeHtml(metaParts.join(' ・ ')) + '</div>';
+        row.appendChild(textEl);
+
+        row.addEventListener('click', function(){
+          titleInput.value = title;
+          authorInput.value = authors === '著者不明' ? '' : authors;
+          publishedInput.value = c.publishedDate || '';
+          editingCoverUrl = thumb || '';
+          coverUrlInput.value = editingCoverUrl;
+          editingMeta = { publisher: c.publisher || '', isbn13: c.isbn13 || '' };
+          if(c.formatGuess){
+            editingFormat = c.formatGuess;
+            updateChoiceButtons(formatChoice, 'format', editingFormat);
+          }
+          updateCoverPreview();
+        });
+
+        searchResults.appendChild(row);
+      });
+    }catch(e){
+      if(seq !== searchRequestSeq) return;
+      console.error('book search error:', e);
+      searchStatus.innerHTML = '<div class="search-status error">検索に失敗しました: ' + escapeHtml(e.message || String(e)) + '（手動で入力してください）</div>';
+    }
+  }
+
+  var searchDebounceTimer = null;
+  searchInput.addEventListener('input', function(){
+    if(searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(function(){ runSearch(true); }, 450);
+  });
+  searchBtn.addEventListener('click', function(){ runSearch(false); });
+  searchInput.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runSearch(false); } });
+
+  submitAdd.addEventListener('click', async function(){
+    if(!currentUser) return;
+    var title = titleInput.value.trim();
+    var author = authorInput.value.trim();
+    if(!title){ titleInput.focus(); return; }
+    submitAdd.disabled = true;
+    var book = {
+      title: title,
+      author: author || '著者不明',
+      status: editingStatus,
+      format: editingFormat,
+      coverUrl: editingCoverUrl,
+      publisher: editingMeta.publisher || '',
+      isbn13: editingMeta.isbn13 || '',
+      publishedDate: publishedInput.value.trim(),
+      addedAt: Date.now()
+    };
+    try{
+      await booksCollection(currentUser.uid).add(book);
+      resetFormFields();
+      searchInput.focus();
+    }catch(e){
+      searchStatus.innerHTML = '<div class="search-status error">保存に失敗しました: ' + escapeHtml(e.message) + '</div>';
+    }
+    submitAdd.disabled = false;
+  });
+
+  shelfSearchInput.addEventListener('input', function(){
+    shelfQuery = shelfSearchInput.value.trim().toLowerCase();
+    render();
+  });
+
+  filtersEl.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    filter = btn.getAttribute('data-filter');
+    filtersEl.querySelectorAll('button').forEach(function(b){ b.classList.toggle('active', b === btn); });
+    render();
+  });
+
+  sortControls.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    var key = btn.getAttribute('data-sort');
+    if(sortKey === key){ sortDir[key] = sortDir[key] * -1; } else { sortKey = key; }
+    sortControls.querySelectorAll('.sort-btn').forEach(function(b){
+      var k = b.getAttribute('data-sort');
+      b.classList.toggle('active', k === sortKey);
+      b.querySelector('.arrow').textContent = sortDir[k] === 1 ? '▲' : '▼';
+    });
+    render();
+  });
+
+  async function toggleStatus(id){
+    if(!currentUser) return;
+    var b = books.find(function(x){ return x.id === id; });
+    if(!b) return;
+    var newStatus = b.status === 'read' ? 'want' : 'read';
+    try{ await booksCollection(currentUser.uid).doc(id).update({ status: newStatus }); }
+    catch(e){ console.error(e); }
+  }
+  async function removeBook(id){
+    if(!currentUser) return;
+    try{ await booksCollection(currentUser.uid).doc(id).delete(); }
+    catch(e){ console.error(e); }
+  }
+
+  function formatLabel(f){ return f === 'bunko' ? '文庫' : f === 'tankobon' ? '単行本' : 'その他'; }
+
+  function render(){
+    var list = books.slice();
+    if(filter !== 'all'){ list = list.filter(function(b){ return b.status === filter; }); }
+    if(shelfQuery){
+      list = list.filter(function(b){
+        var title = (b.title || '').toLowerCase();
+        var author = (b.author || '').toLowerCase();
+        return title.indexOf(shelfQuery) !== -1 || author.indexOf(shelfQuery) !== -1;
+      });
+    }
+    var col = collator();
+    list.sort(function(a, b){
+      var av = a[sortKey] || ''; var bv = b[sortKey] || '';
+      return col.compare(av, bv) * sortDir[sortKey];
+    });
+
+    countRow.textContent = list.length + ' 冊';
+
+    if(list.length === 0){
+      if(shelfQuery || filter !== 'all'){
+        shelf.innerHTML = '<div class="empty"><div class="glyph">— · · · —</div><p>条件に合う本が見つかりませんでした。</p></div>';
+      } else {
+        shelf.innerHTML = '<div class="empty"><div class="glyph">— · · · —</div><p>まだ本が登録されていません。</p><p>「本を登録する」から追加してください。</p></div>';
+      }
+      return;
+    }
+
+    shelf.innerHTML = '';
+    list.forEach(function(b){
+      var el = document.createElement('div');
+      el.className = 'book';
+      el.setAttribute('data-status', b.status);
+
+      var spine = document.createElement('div');
+      spine.className = 'spine';
+      el.appendChild(spine);
+
+      if(b.coverUrl){
+        var img = document.createElement('img');
+        img.className = 'book-cover';
+        img.src = b.coverUrl;
+        el.appendChild(img);
+      } else {
+        var ph = document.createElement('div');
+        ph.className = 'book-cover placeholder';
+        ph.textContent = (b.title || '?').charAt(0);
+        el.appendChild(ph);
+      }
+
+      var body = document.createElement('div');
+      body.className = 'book-body';
+
+      var textWrap = document.createElement('div');
+      textWrap.className = 'book-text';
+      var statusLabel = b.status === 'read' ? '読んだ' : '読みたい';
+      textWrap.innerHTML =
+        '<div class="book-title">' + escapeHtml(b.title) + '</div>' +
+        '<div class="book-author">' + escapeHtml(b.author) + (b.publisher ? '・' + escapeHtml(b.publisher) : '') + (b.publishedDate ? '・' + escapeHtml(b.publishedDate) : '') + '</div>' +
+        '<div class="book-tags">' +
+          '<span class="tag status-tag">' + statusLabel + '</span>' +
+          '<span class="tag format-tag">' + formatLabel(b.format) + '</span>' +
+        '</div>';
+      body.appendChild(textWrap);
+
+      var actions = document.createElement('div');
+      actions.className = 'book-actions';
+      var toggleBtn = document.createElement('button');
+      toggleBtn.className = 'icon-btn'; toggleBtn.title = '状態を切り替える'; toggleBtn.textContent = '⇄';
+      toggleBtn.addEventListener('click', function(){ toggleStatus(b.id); });
+      var delBtn = document.createElement('button');
+      delBtn.className = 'icon-btn delete'; delBtn.title = '削除'; delBtn.textContent = '✕';
+      delBtn.addEventListener('click', function(){ removeBook(b.id); });
+      actions.appendChild(toggleBtn);
+      actions.appendChild(delBtn);
+      body.appendChild(actions);
+
+      el.appendChild(body);
+      shelf.appendChild(el);
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+
+  updateChoiceButtons(statusChoice, 'status', editingStatus);
+  updateChoiceButtons(formatChoice, 'format', editingFormat);
+  updateCoverPreview();
+})();
+</script>
+</body>
+</html>
