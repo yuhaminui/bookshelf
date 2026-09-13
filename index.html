@@ -245,12 +245,12 @@
     <div class="add-form" id="addForm">
       <div class="search-row">
         <input type="text" id="searchInput" placeholder="タイトルや著者名（断片でOK）">
-        <button type="button" id="searchBtn">検索</button>
+        <button type="button" id="searchBtn">じっくり検索</button>
       </div>
       <div class="search-row">
         <input type="text" id="authorFilterInput" placeholder="著者名で絞り込む（任意・「鎮魂」のようなありふれたタイトルの時に）">
       </div>
-      <div class="search-hint">2文字以上入力すると、Google Booksと国立国会図書館サーチの両方から候補を探します（文庫化・重版なども見つかりやすくなります）。タップすると、タイトル・著者・表紙・出版社・発行年月日を自動で入力します。</div>
+      <div class="search-hint">2文字以上入力すると自動で候補を探します（軽め）。「じっくり検索」ボタンを押すかEnterキーで、より多くのページをまとめて取得する本気の検索になります。タップすると、タイトル・著者・表紙・出版社・発行年月日を自動で入力します。</div>
       <div id="searchStatus"></div>
       <div class="search-results" id="searchResults"></div>
       <button type="button" id="loadMoreBtn" class="load-more-btn" style="display:none;">もっと候補を探す</button>
@@ -700,29 +700,40 @@
   var poolRawCandidates = [];
   var poolPage = 0;
 
-  async function searchAllSources(q, authorQ){
+  async function fetchInitialPool(q, authorQ, pageCount){
+    var pagePromises = [];
+    for(var p = 0; p < pageCount; p++){
+      pagePromises.push(fetchRawCandidates(q, p, authorQ));
+    }
+    var results = await Promise.allSettled(pagePromises);
+    var allCandidates = [];
+    var errors = [];
+    results.forEach(function(r){
+      if(r.status === 'fulfilled'){
+        allCandidates = allCandidates.concat(r.value.candidates);
+        errors = errors.concat(r.value.errors);
+      } else {
+        errors.push(r.reason.message);
+      }
+    });
+    return { candidates: allCandidates, errors: errors };
+  }
+
+  async function searchAllSources(q, authorQ, initialPages){
     poolQuery = q;
     poolAuthorQ = authorQ || '';
-    poolPage = 0;
 
-    var first = await fetchRawCandidates(q, poolPage, poolAuthorQ);
-    poolPage = 1;
+    // 自動サジェスト（入力中）は軽量に1ページ、ただし著者名の絞り込みがない
+    // 短い（＝ありふれていそうな）タイトルは念のため2ページ取得する。
+    // 検索ボタン／Enterキーによる「本気の検索」はまとめて多めのページを取得する。
+    var pages = initialPages || (( !authorQ && q.length <= 4) ? 2 : 1);
+
+    var first = await fetchInitialPool(q, poolAuthorQ, pages);
+    poolPage = pages;
     var sourceErrors = first.errors;
     var scorer = makeRelevanceScorer(q, poolAuthorQ);
 
     var allRaw = first.candidates.slice();
-
-    // 「鎮魂」のような短い（＝ありふれていそうな）タイトルは、同じ完全一致タイトルの
-    // 本が多数存在し、最初の1ページ分だけでは目的の版が取得範囲に入らないことがある。
-    // その場合は著者名で絞り込んでいなくても、あらかじめ追加のページを取得しておく。
-    if(!poolAuthorQ && q.length <= 4){
-      try{
-        var extraPage = await fetchRawCandidates(q, 1, poolAuthorQ);
-        allRaw = allRaw.concat(extraPage.candidates);
-        sourceErrors = sourceErrors.concat(extraPage.errors);
-        poolPage = 2;
-      }catch(e){ /* 追加取得の失敗は無視して最初の結果だけ使う */ }
-    }
 
     // 確度の高い一致（ほぼタイトルそのもの）が見つかったら、
     // その確定タイトルで裏側からもう一度検索をかけ直し、
@@ -840,10 +851,11 @@
       return;
     }
     var seq = ++searchRequestSeq;
-    searchStatus.innerHTML = '<div class="search-status">検索中…</div>';
+    searchStatus.innerHTML = isAuto ? '<div class="search-status">検索中…</div>' : '<div class="search-status">じっくり検索中…</div>';
     loadMoreBtn.style.display = 'none';
     try{
-      var out = await searchAllSources(q, authorQ);
+      var initialPages = isAuto ? undefined : 4;
+      var out = await searchAllSources(q, authorQ, initialPages);
       if(seq !== searchRequestSeq) return;
       var candidates = out.candidates;
 
