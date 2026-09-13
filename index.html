@@ -712,10 +712,22 @@
 
     var allRaw = first.candidates.slice();
 
+    // 「鎮魂」のような短い（＝ありふれていそうな）タイトルは、同じ完全一致タイトルの
+    // 本が多数存在し、最初の1ページ分だけでは目的の版が取得範囲に入らないことがある。
+    // その場合は著者名で絞り込んでいなくても、あらかじめ追加のページを取得しておく。
+    if(!poolAuthorQ && q.length <= 4){
+      try{
+        var extraPage = await fetchRawCandidates(q, 1, poolAuthorQ);
+        allRaw = allRaw.concat(extraPage.candidates);
+        sourceErrors = sourceErrors.concat(extraPage.errors);
+        poolPage = 2;
+      }catch(e){ /* 追加取得の失敗は無視して最初の結果だけ使う */ }
+    }
+
     // 確度の高い一致（ほぼタイトルそのもの）が見つかったら、
     // その確定タイトルで裏側からもう一度検索をかけ直し、
     // 同じ作品の他の版（文庫・単行本・コミカライズなど）を取りこぼさないようにする。
-    var firstScored = first.candidates
+    var firstScored = allRaw
       .map(function(c){ return { c: c, score: scorer(c) }; })
       .filter(function(x){ return x.score !== null; })
       .sort(function(a, b){ return b.score - a.score; });
