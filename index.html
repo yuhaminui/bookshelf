@@ -247,6 +247,9 @@
         <input type="text" id="searchInput" placeholder="タイトルや著者名（断片でOK）">
         <button type="button" id="searchBtn">検索</button>
       </div>
+      <div class="search-row">
+        <input type="text" id="authorFilterInput" placeholder="著者名で絞り込む（任意・「鎮魂」のようなありふれたタイトルの時に）">
+      </div>
       <div class="search-hint">2文字以上入力すると、Google Booksと国立国会図書館サーチの両方から候補を探します（文庫化・重版なども見つかりやすくなります）。タップすると、タイトル・著者・表紙・出版社・発行年月日を自動で入力します。</div>
       <div id="searchStatus"></div>
       <div class="search-results" id="searchResults"></div>
@@ -360,6 +363,7 @@
   var authorInput = document.getElementById('authorInput');
   var publishedInput = document.getElementById('publishedInput');
   var searchInput = document.getElementById('searchInput');
+  var authorFilterInput = document.getElementById('authorFilterInput');
   var searchBtn = document.getElementById('searchBtn');
   var searchStatus = document.getElementById('searchStatus');
   var searchResults = document.getElementById('searchResults');
@@ -440,6 +444,7 @@
     authorInput.value = '';
     publishedInput.value = '';
     searchInput.value = '';
+    authorFilterInput.value = '';
     searchResults.innerHTML = '';
     searchStatus.innerHTML = '';
     loadMoreBtn.style.display = 'none';
@@ -515,8 +520,9 @@
     return (s || '').replace(/[^0-9Xx]/g, '');
   }
 
-  async function searchGoogleBooks(q, useIntitle, startIndex){
+  async function searchGoogleBooks(q, useIntitle, startIndex, authorQ){
     var queryText = useIntitle ? ('intitle:' + q) : q;
+    if(authorQ) queryText += ' inauthor:' + authorQ;
     var url = 'https://www.googleapis.com/books/v1/volumes?maxResults=25&startIndex=' + (startIndex || 0) + '&q=' + encodeURIComponent(queryText) + '&key=AIzaSyA33zI1dZYOEzWpfts8MWa2v4dAGTjih9Y';
     var res = await fetch(url);
     if(!res.ok) throw new Error('Google Books status ' + res.status);
@@ -536,8 +542,8 @@
     });
   }
 
-  async function searchNdl(q, idx){
-    var url = 'https://ndlsearch.ndl.go.jp/api/opensearch?title=' + encodeURIComponent(q) + '&cnt=30&idx=' + (idx || 1) + '&dctype=book';
+  async function searchNdl(q, idx, authorQ){
+    var url = 'https://ndlsearch.ndl.go.jp/api/opensearch?title=' + encodeURIComponent(q) + (authorQ ? '&creator=' + encodeURIComponent(authorQ) : '') + '&cnt=30&idx=' + (idx || 1) + '&dctype=book';
     var res = await fetch(url);
     if(!res.ok) throw new Error('NDL status ' + res.status);
     var text = await res.text();
@@ -616,14 +622,14 @@
     return out;
   }
 
-  async function fetchRawCandidates(q, page){
+  async function fetchRawCandidates(q, page, authorQ){
     page = page || 0;
     var googleStart = page * 25;
     var ndlIdx = page * 30 + 1;
     var results = await Promise.allSettled([
-      searchGoogleBooks(q, false, googleStart),
-      searchGoogleBooks(q, true, googleStart),
-      searchNdl(q, ndlIdx)
+      searchGoogleBooks(q, false, googleStart, authorQ),
+      searchGoogleBooks(q, true, googleStart, authorQ),
+      searchNdl(q, ndlIdx, authorQ)
     ]);
     var googlePlain = results[0].status === 'fulfilled' ? results[0].value : [];
     var googleTitle = results[1].status === 'fulfilled' ? results[1].value : [];
@@ -637,8 +643,9 @@
   function normalizeSearchText(t){
     return (t || '').toLowerCase().replace(/[\s「『【（(）】』」\u3000]/g, '');
   }
-  function makeRelevanceScorer(q){
+  function makeRelevanceScorer(q, authorQ){
     var qLower = q.toLowerCase();
+    var authorLower = (authorQ || '').toLowerCase();
     return function(c){
       var t = normalizeSearchText(c.title);
       var a = normalizeSearchText(c.authors);
@@ -646,7 +653,11 @@
       if(t.indexOf(qLower) !== -1) scores.push(qLower.length / Math.max(t.length, 1));
       if(a.indexOf(qLower) !== -1) scores.push((qLower.length / Math.max(a.length, 1)) * 0.9);
       if(scores.length === 0) return null;
-      return Math.max.apply(null, scores);
+      var base = Math.max.apply(null, scores);
+      // 著者名で絞り込みが指定されている場合、同じタイトルの候補の中でも
+      // 実際にその著者と一致するものを明確に上位へ出す
+      if(authorLower && a.indexOf(authorLower) !== -1) base += 0.5;
+      return base;
     };
   }
 
@@ -685,17 +696,19 @@
 
   // 現在の検索クエリに対する候補プールの状態（「もっと候補を探す」で使う）
   var poolQuery = '';
+  var poolAuthorQ = '';
   var poolRawCandidates = [];
   var poolPage = 0;
 
-  async function searchAllSources(q){
+  async function searchAllSources(q, authorQ){
     poolQuery = q;
+    poolAuthorQ = authorQ || '';
     poolPage = 0;
 
-    var first = await fetchRawCandidates(q, poolPage);
+    var first = await fetchRawCandidates(q, poolPage, poolAuthorQ);
     poolPage = 1;
     var sourceErrors = first.errors;
-    var scorer = makeRelevanceScorer(q);
+    var scorer = makeRelevanceScorer(q, poolAuthorQ);
 
     var allRaw = first.candidates.slice();
 
@@ -709,7 +722,7 @@
     var strongMatch = firstScored.length > 0 && firstScored[0].score >= 0.5 ? firstScored[0].c : null;
     if(strongMatch && strongMatch.title !== q){
       try{
-        var second = await fetchRawCandidates(strongMatch.title, 0);
+        var second = await fetchRawCandidates(strongMatch.title, 0, poolAuthorQ);
         allRaw = allRaw.concat(second.candidates);
         sourceErrors = sourceErrors.concat(second.errors);
       }catch(e){ /* 追加検索の失敗は無視して最初の結果だけ使う */ }
@@ -724,13 +737,13 @@
   async function loadMoreCandidates(){
     if(!poolQuery) return { candidates: [], errors: ['検索語がありません'] };
     var q = poolQuery;
-    var scorer = makeRelevanceScorer(q);
+    var scorer = makeRelevanceScorer(q, poolAuthorQ);
     var page = poolPage;
     poolPage = page + 1;
 
     var next;
     try{
-      next = await fetchRawCandidates(q, page);
+      next = await fetchRawCandidates(q, page, poolAuthorQ);
     }catch(e){
       return { candidates: [], errors: ['候補の追加取得に失敗しました: ' + e.message] };
     }
@@ -802,6 +815,7 @@
 
   async function runSearch(isAuto){
     var q = searchInput.value.trim().replace(/[\s\u3000]/g, '');
+    var authorQ = authorFilterInput.value.trim().replace(/[\s\u3000]/g, '');
     if(!q){
       if(!isAuto) searchStatus.innerHTML = '<div class="search-status error">検索語を入力してください</div>';
       else { searchStatus.innerHTML = ''; searchResults.innerHTML = ''; loadMoreBtn.style.display = 'none'; }
@@ -817,7 +831,7 @@
     searchStatus.innerHTML = '<div class="search-status">検索中…</div>';
     loadMoreBtn.style.display = 'none';
     try{
-      var out = await searchAllSources(q);
+      var out = await searchAllSources(q, authorQ);
       if(seq !== searchRequestSeq) return;
       var candidates = out.candidates;
 
@@ -870,6 +884,11 @@
     if(searchDebounceTimer) clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(function(){ runSearch(true); }, 450);
   });
+  authorFilterInput.addEventListener('input', function(){
+    if(searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(function(){ runSearch(true); }, 450);
+  });
+  authorFilterInput.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runSearch(false); } });
   searchBtn.addEventListener('click', function(){ runSearch(false); });
   searchInput.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runSearch(false); } });
 
