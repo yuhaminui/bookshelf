@@ -922,15 +922,33 @@
   searchBtn.addEventListener('click', function(){ runSearch(false); });
   searchInput.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runSearch(false); } });
 
+  function findDuplicateBook(title, author, format){
+    var t = normalizeSearchText(title);
+    var a = normalizeSearchText(author);
+    return books.find(function(b){
+      return normalizeSearchText(b.title) === t &&
+             normalizeSearchText(b.author) === a &&
+             b.format === format;
+    });
+  }
+
   submitAdd.addEventListener('click', async function(){
     if(!currentUser) return;
     var title = titleInput.value.trim();
-    var author = authorInput.value.trim();
+    var author = authorInput.value.trim() || '著者不明';
     if(!title){ titleInput.focus(); return; }
+
+    var duplicate = findDuplicateBook(title, author, editingFormat);
+    if(duplicate){
+      var statusLabel = duplicate.status === 'read' ? '読んだ' : '読みたい';
+      searchStatus.innerHTML = '<div class="search-status error">「' + escapeHtml(title) + '」（' + escapeHtml(formatLabel(editingFormat)) + '）は既に本棚に登録されています（現在の状態：' + statusLabel + '）。重複登録はしませんでした。</div>';
+      return;
+    }
+
     submitAdd.disabled = true;
     var book = {
       title: title,
-      author: author || '著者不明',
+      author: author,
       status: editingStatus,
       format: editingFormat,
       coverUrl: editingCoverUrl,
@@ -1081,6 +1099,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-14</div>
+  <div class="build-info">更新: 2026-09-15 #1</div>
 </body>
 </html>
