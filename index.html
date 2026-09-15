@@ -354,6 +354,7 @@
   var editingFormat = 'other';
   var editingCoverUrl = '';
   var editingMeta = {};
+  var editingBookId = null;
 
   var loginScreen = document.getElementById('loginScreen');
   var loginError = document.getElementById('loginError');
@@ -459,6 +460,8 @@
     editingCoverUrl = '';
     coverUrlInput.value = '';
     editingMeta = {};
+    editingBookId = null;
+    submitAdd.textContent = '棚に追加';
     updateChoiceButtons(statusChoice, 'status', editingStatus);
     updateChoiceButtons(formatChoice, 'format', editingFormat);
     updateCoverPreview();
@@ -647,7 +650,7 @@
   }
 
   function normalizeSearchText(t){
-    return (t || '').toLowerCase().replace(/[\s「『【（(）】』」\u3000]/g, '');
+    return (t || '').toLowerCase().replace(/[\s「『【（(）】』」\u3000\u30FB]/g, '');
   }
   function makeRelevanceScorer(q, authorQ){
     var qLower = q.toLowerCase();
@@ -843,8 +846,8 @@
   var searchRequestSeq = 0;
 
   async function runSearch(isAuto){
-    var q = searchInput.value.trim().replace(/[\s\u3000]/g, '');
-    var authorQ = authorFilterInput.value.trim().replace(/[\s\u3000]/g, '');
+    var q = searchInput.value.trim().replace(/[\s\u3000\u30FB]/g, '');
+    var authorQ = authorFilterInput.value.trim().replace(/[\s\u3000\u30FB]/g, '');
     if(!q){
       if(!isAuto) searchStatus.innerHTML = '<div class="search-status error">検索語を入力してください</div>';
       else { searchStatus.innerHTML = ''; searchResults.innerHTML = ''; loadMoreBtn.style.display = 'none'; }
@@ -922,14 +925,33 @@
   searchBtn.addEventListener('click', function(){ runSearch(false); });
   searchInput.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); runSearch(false); } });
 
-  function findDuplicateBook(title, author, format){
+  function findDuplicateBook(title, author, format, excludeId){
     var t = normalizeSearchText(title);
     var a = normalizeSearchText(author);
     return books.find(function(b){
-      return normalizeSearchText(b.title) === t &&
+      return b.id !== excludeId &&
+             normalizeSearchText(b.title) === t &&
              normalizeSearchText(b.author) === a &&
              b.format === format;
     });
+  }
+
+  function startEditBook(book){
+    openForm();
+    editingBookId = book.id;
+    titleInput.value = book.title || '';
+    authorInput.value = book.author === '著者不明' ? '' : (book.author || '');
+    publishedInput.value = book.publishedDate || '';
+    editingCoverUrl = book.coverUrl || '';
+    coverUrlInput.value = editingCoverUrl;
+    editingMeta = { publisher: book.publisher || '', isbn13: book.isbn13 || '' };
+    editingFormat = book.format || 'other';
+    editingStatus = book.status || 'want';
+    updateChoiceButtons(statusChoice, 'status', editingStatus);
+    updateChoiceButtons(formatChoice, 'format', editingFormat);
+    updateCoverPreview();
+    submitAdd.textContent = '更新する';
+    titleInput.focus();
   }
 
   submitAdd.addEventListener('click', async function(){
@@ -938,7 +960,7 @@
     var author = authorInput.value.trim() || '著者不明';
     if(!title){ titleInput.focus(); return; }
 
-    var duplicate = findDuplicateBook(title, author, editingFormat);
+    var duplicate = findDuplicateBook(title, author, editingFormat, editingBookId);
     if(duplicate){
       var statusLabel = duplicate.status === 'read' ? '読んだ' : '読みたい';
       searchStatus.innerHTML = '<div class="search-status error">「' + escapeHtml(title) + '」（' + escapeHtml(formatLabel(editingFormat)) + '）は既に本棚に登録されています（現在の状態：' + statusLabel + '）。重複登録はしませんでした。</div>';
@@ -954,13 +976,18 @@
       coverUrl: editingCoverUrl,
       publisher: editingMeta.publisher || '',
       isbn13: editingMeta.isbn13 || '',
-      publishedDate: publishedInput.value.trim(),
-      addedAt: Date.now()
+      publishedDate: publishedInput.value.trim()
     };
     try{
-      await booksCollection(currentUser.uid).add(book);
-      resetFormFields();
-      searchInput.focus();
+      if(editingBookId){
+        await booksCollection(currentUser.uid).doc(editingBookId).update(book);
+        closeForm();
+      } else {
+        book.addedAt = Date.now();
+        await booksCollection(currentUser.uid).add(book);
+        resetFormFields();
+        searchInput.focus();
+      }
     }catch(e){
       searchStatus.innerHTML = '<div class="search-status error">保存に失敗しました: ' + escapeHtml(e.message) + '</div>';
     }
@@ -968,7 +995,7 @@
   });
 
   shelfSearchInput.addEventListener('input', function(){
-    shelfQuery = shelfSearchInput.value.trim().toLowerCase();
+    shelfQuery = normalizeSearchText(shelfSearchInput.value);
     render();
   });
 
@@ -1012,8 +1039,8 @@
     if(filter !== 'all'){ list = list.filter(function(b){ return b.status === filter; }); }
     if(shelfQuery){
       list = list.filter(function(b){
-        var title = (b.title || '').toLowerCase();
-        var author = (b.author || '').toLowerCase();
+        var title = normalizeSearchText(b.title);
+        var author = normalizeSearchText(b.author);
         return title.indexOf(shelfQuery) !== -1 || author.indexOf(shelfQuery) !== -1;
       });
     }
@@ -1073,12 +1100,16 @@
 
       var actions = document.createElement('div');
       actions.className = 'book-actions';
+      var editBtn = document.createElement('button');
+      editBtn.className = 'icon-btn'; editBtn.title = '編集'; editBtn.textContent = '✎';
+      editBtn.addEventListener('click', function(){ startEditBook(b); });
       var toggleBtn = document.createElement('button');
       toggleBtn.className = 'icon-btn'; toggleBtn.title = '状態を切り替える'; toggleBtn.textContent = '⇄';
       toggleBtn.addEventListener('click', function(){ toggleStatus(b.id); });
       var delBtn = document.createElement('button');
       delBtn.className = 'icon-btn delete'; delBtn.title = '削除'; delBtn.textContent = '✕';
       delBtn.addEventListener('click', function(){ removeBook(b.id); });
+      actions.appendChild(editBtn);
       actions.appendChild(toggleBtn);
       actions.appendChild(delBtn);
       body.appendChild(actions);
@@ -1099,6 +1130,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-15 #1</div>
+  <div class="build-info">更新: 2026-09-15 #3</div>
 </body>
 </html>
