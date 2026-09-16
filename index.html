@@ -742,6 +742,13 @@
     return { candidates: allCandidates, errors: errors };
   }
 
+  function authorMatchesFilter(c, authorQ){
+    if(!authorQ) return true;
+    var a = normalizeSearchText(c.authors);
+    var aq = normalizeSearchText(authorQ);
+    return aq !== '' && a.indexOf(aq) !== -1;
+  }
+
   async function searchAllSources(q, authorQ, initialPages){
     poolQuery = q;
     poolAuthorQ = authorQ || '';
@@ -749,7 +756,7 @@
     // 自動サジェスト（入力中）は軽量に1ページ、ただし著者名の絞り込みがある場合や
     // 短い（＝ありふれていそうな）タイトルは、目的の版を見つけやすくするため
     // 念のため2ページ取得する。著者名はAPI側の絞り込みには使わず、
-    // 幅広く取得した候補の中からこちら側のスコアリングで優先表示する。
+    // 幅広く取得した候補の中からこちら側の判定で絞り込む（表記ゆれに強くするため）。
     // 検索ボタン／Enterキーによる「本気の検索」はまとめて多めのページを取得する。
     var pages = initialPages || ((poolAuthorQ || q.length <= 4) ? 2 : 1);
 
@@ -778,8 +785,19 @@
 
     poolRawCandidates = allRaw;
 
-    var combined = await finalizeCandidates(allRaw, scorer, 0.18, 15);
-    return { candidates: combined, errors: sourceErrors };
+    var authorFallbackUsed = false;
+    var workingSet = allRaw;
+    if(poolAuthorQ){
+      var filteredByAuthor = allRaw.filter(function(c){ return authorMatchesFilter(c, poolAuthorQ); });
+      if(filteredByAuthor.length > 0){
+        workingSet = filteredByAuthor;
+      } else {
+        authorFallbackUsed = true;
+      }
+    }
+
+    var combined = await finalizeCandidates(workingSet, scorer, 0.18, 15);
+    return { candidates: combined, errors: sourceErrors, authorFallbackUsed: authorFallbackUsed };
   }
 
   async function loadMoreCandidates(){
@@ -798,8 +816,14 @@
 
     poolRawCandidates = poolRawCandidates.concat(next.candidates);
 
+    var workingSet = poolRawCandidates;
+    if(poolAuthorQ){
+      var filteredByAuthor = poolRawCandidates.filter(function(c){ return authorMatchesFilter(c, poolAuthorQ); });
+      if(filteredByAuthor.length > 0) workingSet = filteredByAuthor;
+    }
+
     // 「もっと探す」は基準を緩め、より多くの候補を表示する
-    var combined = await finalizeCandidates(poolRawCandidates, scorer, 0.1, 30);
+    var combined = await finalizeCandidates(workingSet, scorer, 0.1, 30);
     return { candidates: combined, errors: next.errors };
   }
 
@@ -896,7 +920,9 @@
 
       searchStatus.innerHTML = out.errors.length > 0
         ? '<div class="search-status error">一部の検索元でエラー: ' + escapeHtml(out.errors.join(' / ')) + '（他の結果は表示しています）</div>'
-        : '';
+        : (out.authorFallbackUsed
+            ? '<div class="search-status">「' + escapeHtml(authorQ) + '」で絞り込める候補が見つからなかったため、タイトルの一致順で全体を表示しています。</div>'
+            : '');
       renderResultList(candidates);
       loadMoreBtn.style.display = 'inline-block';
       loadMoreBtn.textContent = 'もっと候補を探す';
@@ -1156,6 +1182,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-15 #7</div>
+  <div class="build-info">更新: 2026-09-15 #8</div>
 </body>
 </html>
