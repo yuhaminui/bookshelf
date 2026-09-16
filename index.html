@@ -544,9 +544,8 @@
     return (s || '').replace(/[^0-9Xx]/g, '');
   }
 
-  async function searchGoogleBooks(q, useIntitle, startIndex, authorQ){
+  async function searchGoogleBooks(q, useIntitle, startIndex){
     var queryText = useIntitle ? ('intitle:' + q) : q;
-    if(authorQ) queryText += ' inauthor:' + authorQ;
     var url = 'https://www.googleapis.com/books/v1/volumes?maxResults=25&startIndex=' + (startIndex || 0) + '&q=' + encodeURIComponent(queryText) + '&key=AIzaSyA33zI1dZYOEzWpfts8MWa2v4dAGTjih9Y';
     var res = await fetch(url);
     if(!res.ok) throw new Error('Google Books status ' + res.status);
@@ -566,8 +565,8 @@
     });
   }
 
-  async function searchNdl(q, idx, authorQ){
-    var url = 'https://ndlsearch.ndl.go.jp/api/opensearch?title=' + encodeURIComponent(q) + (authorQ ? '&creator=' + encodeURIComponent(authorQ) : '') + '&cnt=30&idx=' + (idx || 1) + '&dctype=book';
+  async function searchNdl(q, idx){
+    var url = 'https://ndlsearch.ndl.go.jp/api/opensearch?title=' + encodeURIComponent(q) + '&cnt=30&idx=' + (idx || 1) + '&dctype=book';
     var res = await fetch(url);
     if(!res.ok) throw new Error('NDL status ' + res.status);
     var text = await res.text();
@@ -646,14 +645,14 @@
     return out;
   }
 
-  async function fetchRawCandidates(q, page, authorQ){
+  async function fetchRawCandidates(q, page){
     page = page || 0;
     var googleStart = page * 25;
     var ndlIdx = page * 30 + 1;
     var results = await Promise.allSettled([
-      searchGoogleBooks(q, false, googleStart, authorQ),
-      searchGoogleBooks(q, true, googleStart, authorQ),
-      searchNdl(q, ndlIdx, authorQ)
+      searchGoogleBooks(q, false, googleStart),
+      searchGoogleBooks(q, true, googleStart),
+      searchNdl(q, ndlIdx)
     ]);
     var googlePlain = results[0].status === 'fulfilled' ? results[0].value : [];
     var googleTitle = results[1].status === 'fulfilled' ? results[1].value : [];
@@ -724,10 +723,10 @@
   var poolRawCandidates = [];
   var poolPage = 0;
 
-  async function fetchInitialPool(q, authorQ, pageCount){
+  async function fetchInitialPool(q, pageCount){
     var pagePromises = [];
     for(var p = 0; p < pageCount; p++){
-      pagePromises.push(fetchRawCandidates(q, p, authorQ));
+      pagePromises.push(fetchRawCandidates(q, p));
     }
     var results = await Promise.allSettled(pagePromises);
     var allCandidates = [];
@@ -747,12 +746,14 @@
     poolQuery = q;
     poolAuthorQ = authorQ || '';
 
-    // 自動サジェスト（入力中）は軽量に1ページ、ただし著者名の絞り込みがない
-    // 短い（＝ありふれていそうな）タイトルは念のため2ページ取得する。
+    // 自動サジェスト（入力中）は軽量に1ページ、ただし著者名の絞り込みがある場合や
+    // 短い（＝ありふれていそうな）タイトルは、目的の版を見つけやすくするため
+    // 念のため2ページ取得する。著者名はAPI側の絞り込みには使わず、
+    // 幅広く取得した候補の中からこちら側のスコアリングで優先表示する。
     // 検索ボタン／Enterキーによる「本気の検索」はまとめて多めのページを取得する。
-    var pages = initialPages || (( !authorQ && q.length <= 4) ? 2 : 1);
+    var pages = initialPages || ((poolAuthorQ || q.length <= 4) ? 2 : 1);
 
-    var first = await fetchInitialPool(q, poolAuthorQ, pages);
+    var first = await fetchInitialPool(q, pages);
     poolPage = pages;
     var sourceErrors = first.errors;
     var scorer = makeRelevanceScorer(q, poolAuthorQ);
@@ -769,7 +770,7 @@
     var strongMatch = firstScored.length > 0 && firstScored[0].score >= 0.5 ? firstScored[0].c : null;
     if(strongMatch && strongMatch.title !== q){
       try{
-        var second = await fetchRawCandidates(strongMatch.title, 0, poolAuthorQ);
+        var second = await fetchRawCandidates(strongMatch.title, 0);
         allRaw = allRaw.concat(second.candidates);
         sourceErrors = sourceErrors.concat(second.errors);
       }catch(e){ /* 追加検索の失敗は無視して最初の結果だけ使う */ }
@@ -790,7 +791,7 @@
 
     var next;
     try{
-      next = await fetchRawCandidates(q, page, poolAuthorQ);
+      next = await fetchRawCandidates(q, page);
     }catch(e){
       return { candidates: [], errors: ['候補の追加取得に失敗しました: ' + e.message] };
     }
@@ -862,7 +863,7 @@
 
   async function runSearch(isAuto){
     var q = searchInput.value.trim().replace(/[\s\u3000\u30FB]/g, '');
-    var authorQ = authorFilterInput.value.trim().replace(/[\s\u3000\u30FB]/g, '');
+    var authorQ = authorFilterInput.value.trim();
     if(!q){
       if(!isAuto) searchStatus.innerHTML = '<div class="search-status error">検索語を入力してください</div>';
       else { searchStatus.innerHTML = ''; searchResults.innerHTML = ''; loadMoreBtn.style.display = 'none'; }
@@ -1155,6 +1156,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-15 #6</div>
+  <div class="build-info">更新: 2026-09-15 #7</div>
 </body>
 </html>
