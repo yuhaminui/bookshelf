@@ -127,6 +127,12 @@
   .result-text{ min-width: 0; }
   .result-title{ font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.3; }
   .result-meta{ font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; line-height: 1.4; }
+  .find-editions-btn{
+    display: inline-block; margin-top: 5px; padding: 3px 8px;
+    background: none; border: 1px solid var(--rule); border-radius: var(--radius);
+    font-family: 'Inter', sans-serif; font-size: 10.5px; color: var(--info); cursor: pointer;
+  }
+  .find-editions-btn:active{ background: var(--paper-dark); }
 
   .load-more-btn{
     display: block; width: 100%; margin-bottom: 14px; padding: 9px;
@@ -863,6 +869,18 @@
       textEl.innerHTML = '<div class="result-title">' + escapeHtml(title) + '</div>' +
         '<div class="result-meta">' + escapeHtml(authors) + '</div>' +
         '<div class="result-meta">' + escapeHtml(metaParts.join(' ・ ')) + '</div>';
+      var findEditionsBtn = document.createElement('button');
+      findEditionsBtn.type = 'button';
+      findEditionsBtn.className = 'find-editions-btn';
+      findEditionsBtn.textContent = 'この本の他の版を探す';
+      findEditionsBtn.addEventListener('click', function(e){
+        e.stopPropagation();
+        searchInput.value = title;
+        authorFilterInput.value = '';
+        updateSearchClearBtn();
+        runSearch(false);
+      });
+      textEl.appendChild(findEditionsBtn);
       row.appendChild(textEl);
 
       row.addEventListener('click', function(){
@@ -1182,6 +1200,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-15 #8</div>
+  <div class="build-info">更新: 2026-09-15 #9</div>
 </body>
 </html>
