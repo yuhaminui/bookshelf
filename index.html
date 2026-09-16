@@ -91,10 +91,18 @@
   .add-form.open{ display: block; }
 
   .search-row{ display: flex; gap: 8px; margin-bottom: 4px; }
+  .search-input-wrap{ position: relative; flex: 1; }
+  .search-input-wrap input{ width: 100%; padding-right: 30px; }
   .search-row input{
     flex: 1; padding: 9px 10px; border: 1px solid var(--rule); border-radius: var(--radius);
     background: #fff; font-family: 'Inter', sans-serif; font-size: 15px; color: var(--ink);
   }
+  .clear-btn{
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: var(--ink-soft); font-size: 13px;
+    cursor: pointer; padding: 6px 8px; line-height: 1;
+  }
+  .clear-btn:active{ color: var(--ink); }
   .search-row button{
     padding: 9px 14px; background: var(--info); color: #fff; border: none; border-radius: var(--radius);
     font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
@@ -250,7 +258,10 @@
 
     <div class="add-form" id="addForm">
       <div class="search-row">
-        <input type="text" id="searchInput" placeholder="タイトルや著者名（断片でOK）">
+        <div class="search-input-wrap">
+          <input type="text" id="searchInput" placeholder="タイトルや著者名（断片でOK）">
+          <button type="button" id="searchClearBtn" class="clear-btn" style="display:none;" aria-label="検索欄をクリア">✕</button>
+        </div>
         <button type="button" id="searchBtn">じっくり検索</button>
       </div>
       <div class="search-row">
@@ -370,6 +381,7 @@
   var authorInput = document.getElementById('authorInput');
   var publishedInput = document.getElementById('publishedInput');
   var searchInput = document.getElementById('searchInput');
+  var searchClearBtn = document.getElementById('searchClearBtn');
   var authorFilterInput = document.getElementById('authorFilterInput');
   var searchBtn = document.getElementById('searchBtn');
   var searchStatus = document.getElementById('searchStatus');
@@ -456,6 +468,7 @@
       searchResults.innerHTML = '';
       searchStatus.innerHTML = '';
       loadMoreBtn.style.display = 'none';
+      searchClearBtn.style.display = 'none';
     }
     editingStatus = 'want';
     editingFormat = 'other';
@@ -915,9 +928,19 @@
   });
 
   var searchDebounceTimer = null;
+  function updateSearchClearBtn(){
+    searchClearBtn.style.display = searchInput.value ? 'block' : 'none';
+  }
   searchInput.addEventListener('input', function(){
+    updateSearchClearBtn();
     if(searchDebounceTimer) clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(function(){ runSearch(true); }, 450);
+  });
+  searchClearBtn.addEventListener('click', function(){
+    searchInput.value = '';
+    updateSearchClearBtn();
+    searchInput.focus();
+    runSearch(true);
   });
   authorFilterInput.addEventListener('input', function(){
     if(searchDebounceTimer) clearTimeout(searchDebounceTimer);
@@ -1132,6 +1155,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-15 #5</div>
+  <div class="build-info">更新: 2026-09-15 #6</div>
 </body>
 </html>
