@@ -446,15 +446,17 @@
     addToggle.style.display = 'none';
     searchInput.focus();
   }
-  function resetFormFields(){
+  function resetFormFields(keepResults){
     titleInput.value = '';
     authorInput.value = '';
     publishedInput.value = '';
-    searchInput.value = '';
-    authorFilterInput.value = '';
-    searchResults.innerHTML = '';
-    searchStatus.innerHTML = '';
-    loadMoreBtn.style.display = 'none';
+    if(!keepResults){
+      searchInput.value = '';
+      authorFilterInput.value = '';
+      searchResults.innerHTML = '';
+      searchStatus.innerHTML = '';
+      loadMoreBtn.style.display = 'none';
+    }
     editingStatus = 'want';
     editingFormat = 'other';
     editingCoverUrl = '';
@@ -985,8 +987,8 @@
       } else {
         book.addedAt = Date.now();
         await booksCollection(currentUser.uid).add(book);
-        resetFormFields();
-        searchInput.focus();
+        resetFormFields(true);
+        searchStatus.innerHTML = '<div class="search-status">「' + escapeHtml(title) + '」を棚に追加しました。続けて他の巻を選べます。</div>';
       }
     }catch(e){
       searchStatus.innerHTML = '<div class="search-status error">保存に失敗しました: ' + escapeHtml(e.message) + '</div>';
@@ -1130,6 +1132,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-15 #3</div>
+  <div class="build-info">更新: 2026-09-15 #4</div>
 </body>
 </html>
