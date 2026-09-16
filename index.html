@@ -652,11 +652,11 @@
   }
 
   function normalizeSearchText(t){
-    return (t || '').toLowerCase().replace(/[\s「『【（(）】』」\u3000\u30FB]/g, '');
+    return (t || '').normalize('NFKC').toLowerCase().replace(/[\s「『【（(）】』」\u3000\u30FB]/g, '');
   }
   function makeRelevanceScorer(q, authorQ){
-    var qLower = q.toLowerCase();
-    var authorLower = (authorQ || '').toLowerCase();
+    var qLower = normalizeSearchText(q);
+    var authorLower = normalizeSearchText(authorQ || '');
     return function(c){
       var t = normalizeSearchText(c.title);
       var a = normalizeSearchText(c.authors);
@@ -1132,6 +1132,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-15 #4</div>
+  <div class="build-info">更新: 2026-09-15 #5</div>
 </body>
 </html>
