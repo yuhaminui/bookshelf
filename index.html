@@ -1034,7 +1034,10 @@
     var duplicate = findDuplicateBook(title, author, editingFormat, editingBookId);
     if(duplicate){
       var statusLabel = duplicate.status === 'read' ? '読んだ' : '読みたい';
-      searchStatus.innerHTML = '<div class="search-status error">「' + escapeHtml(title) + '」（' + escapeHtml(formatLabel(editingFormat)) + '）は既に本棚に登録されています（現在の状態：' + statusLabel + '）。重複登録はしませんでした。</div>';
+      var formatLabelText = formatLabel(editingFormat);
+      var wasEditing = !!editingBookId;
+      if(!wasEditing) resetFormFields(true);
+      searchStatus.innerHTML = '<div class="search-status error">「' + escapeHtml(title) + '」（' + escapeHtml(formatLabelText) + '）は既に本棚に登録されています（現在の状態：' + statusLabel + '）。重複登録はしませんでした。</div>';
       return;
     }
 
@@ -1201,6 +1204,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-15 #10</div>
+  <div class="build-info">更新: 2026-09-15 #11</div>
 </body>
 </html>
