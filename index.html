@@ -273,7 +273,7 @@
       <div class="search-row">
         <input type="text" id="authorFilterInput" placeholder="著者名で絞り込む（任意・「鎮魂」のようなありふれたタイトルの時に）">
       </div>
-      <div class="search-hint">2文字以上入力すると自動で候補を探します（軽め）。「じっくり検索」ボタンを押すかEnterキーで、より多くのページをまとめて取得する本気の検索になります。タップすると、タイトル・著者・表紙・出版社・発行年月日を自動で入力します。</div>
+      <div class="search-hint">2文字以上入力すると自動で候補を探します（軽め）。「じっくり検索」ボタンを押すかEnterキーで、より多くのページをまとめて取得する本気の検索になります。タイトル欄を空にして著者名だけ入力すれば、その著者の作品を一覧できます（記号や1文字のタイトルなど、タイトル検索が難しい時に）。タップすると、タイトル・著者・表紙・出版社・発行年月日を自動で入力します。</div>
       <div id="searchStatus"></div>
       <div class="search-results" id="searchResults"></div>
       <button type="button" id="loadMoreBtn" class="load-more-btn" style="display:none;">もっと候補を探す</button>
@@ -550,12 +550,7 @@
     return (s || '').replace(/[^0-9Xx]/g, '');
   }
 
-  async function searchGoogleBooks(q, useIntitle, startIndex){
-    var queryText = useIntitle ? ('intitle:' + q) : q;
-    var url = 'https://www.googleapis.com/books/v1/volumes?maxResults=25&startIndex=' + (startIndex || 0) + '&q=' + encodeURIComponent(queryText) + '&key=AIzaSyA33zI1dZYOEzWpfts8MWa2v4dAGTjih9Y';
-    var res = await fetch(url);
-    if(!res.ok) throw new Error('Google Books status ' + res.status);
-    var data = await res.json();
+  function parseGoogleBooksResponse(data){
     return (data.items || []).map(function(item){
       var vi = item.volumeInfo || {};
       return {
@@ -571,11 +566,25 @@
     });
   }
 
-  async function searchNdl(q, idx){
-    var url = 'https://ndlsearch.ndl.go.jp/api/opensearch?title=' + encodeURIComponent(q) + '&cnt=30&idx=' + (idx || 1) + '&dctype=book';
+  async function fetchGoogleBooksUrl(url){
     var res = await fetch(url);
-    if(!res.ok) throw new Error('NDL status ' + res.status);
-    var text = await res.text();
+    if(!res.ok) throw new Error('Google Books status ' + res.status);
+    var data = await res.json();
+    return parseGoogleBooksResponse(data);
+  }
+
+  async function searchGoogleBooks(q, useIntitle, startIndex){
+    var queryText = useIntitle ? ('intitle:' + q) : q;
+    var url = 'https://www.googleapis.com/books/v1/volumes?maxResults=25&startIndex=' + (startIndex || 0) + '&q=' + encodeURIComponent(queryText) + '&key=AIzaSyA33zI1dZYOEzWpfts8MWa2v4dAGTjih9Y';
+    return fetchGoogleBooksUrl(url);
+  }
+
+  async function searchGoogleBooksByAuthor(authorQ, startIndex){
+    var url = 'https://www.googleapis.com/books/v1/volumes?maxResults=25&startIndex=' + (startIndex || 0) + '&q=' + encodeURIComponent('inauthor:' + authorQ) + '&key=AIzaSyA33zI1dZYOEzWpfts8MWa2v4dAGTjih9Y';
+    return fetchGoogleBooksUrl(url);
+  }
+
+  function parseNdlResponse(text){
     var xml = new DOMParser().parseFromString(text, 'text/xml');
     if(xml.querySelector('parsererror')){ throw new Error('NDLの応答を解釈できませんでした'); }
     var items = Array.prototype.slice.call(xml.getElementsByTagName('item'));
@@ -612,6 +621,23 @@
         source: 'ndl'
       };
     });
+  }
+
+  async function fetchNdlUrl(url){
+    var res = await fetch(url);
+    if(!res.ok) throw new Error('NDL status ' + res.status);
+    var text = await res.text();
+    return parseNdlResponse(text);
+  }
+
+  async function searchNdl(q, idx){
+    var url = 'https://ndlsearch.ndl.go.jp/api/opensearch?title=' + encodeURIComponent(q) + '&cnt=30&idx=' + (idx || 1) + '&dctype=book';
+    return fetchNdlUrl(url);
+  }
+
+  async function searchNdlByAuthor(authorQ, idx){
+    var url = 'https://ndlsearch.ndl.go.jp/api/opensearch?creator=' + encodeURIComponent(authorQ) + '&cnt=30&idx=' + (idx || 1) + '&dctype=book';
+    return fetchNdlUrl(url);
   }
 
   function guessFormatFromHankeidokuji(s){
@@ -651,10 +677,26 @@
     return out;
   }
 
-  async function fetchRawCandidates(q, page){
+  async function fetchRawCandidates(q, page, authorQ){
     page = page || 0;
     var googleStart = page * 25;
     var ndlIdx = page * 30 + 1;
+
+    if(!q && authorQ){
+      // タイトルが空（記号だけ・1文字などで検索が難しい）で著者名だけ指定されている場合は、
+      // その著者の作品を幅広く一覧できる「著者名だけで探す」モードにする
+      var authorResults = await Promise.allSettled([
+        searchGoogleBooksByAuthor(authorQ, googleStart),
+        searchNdlByAuthor(authorQ, ndlIdx)
+      ]);
+      var aGoogle = authorResults[0].status === 'fulfilled' ? authorResults[0].value : [];
+      var aNdl = authorResults[1].status === 'fulfilled' ? authorResults[1].value : [];
+      var aErrors = [];
+      if(authorResults[0].status === 'rejected') aErrors.push('Google Books: ' + authorResults[0].reason.message);
+      if(authorResults[1].status === 'rejected') aErrors.push('NDL Search: ' + authorResults[1].reason.message);
+      return { candidates: aGoogle.concat(aNdl), errors: aErrors };
+    }
+
     var results = await Promise.allSettled([
       searchGoogleBooks(q, false, googleStart),
       searchGoogleBooks(q, true, googleStart),
@@ -729,10 +771,10 @@
   var poolRawCandidates = [];
   var poolPage = 0;
 
-  async function fetchInitialPool(q, pageCount){
+  async function fetchInitialPool(q, pageCount, authorQ){
     var pagePromises = [];
     for(var p = 0; p < pageCount; p++){
-      pagePromises.push(fetchRawCandidates(q, p));
+      pagePromises.push(fetchRawCandidates(q, p, authorQ));
     }
     var results = await Promise.allSettled(pagePromises);
     var allCandidates = [];
@@ -766,34 +808,38 @@
     // 検索ボタン／Enterキーによる「本気の検索」はまとめて多めのページを取得する。
     var pages = initialPages || ((poolAuthorQ || q.length <= 4) ? 2 : 1);
 
-    var first = await fetchInitialPool(q, pages);
+    var first = await fetchInitialPool(q, pages, poolAuthorQ);
     poolPage = pages;
     var sourceErrors = first.errors;
     var scorer = makeRelevanceScorer(q, poolAuthorQ);
+    var authorOnlyMode = !q && !!poolAuthorQ;
 
     var allRaw = first.candidates.slice();
 
     // 確度の高い一致（ほぼタイトルそのもの）が見つかったら、
     // その確定タイトルで裏側からもう一度検索をかけ直し、
     // 同じ作品の他の版（文庫・単行本・コミカライズなど）を取りこぼさないようにする。
-    var firstScored = allRaw
-      .map(function(c){ return { c: c, score: scorer(c) }; })
-      .filter(function(x){ return x.score !== null; })
-      .sort(function(a, b){ return b.score - a.score; });
-    var strongMatch = firstScored.length > 0 && firstScored[0].score >= 0.5 ? firstScored[0].c : null;
-    if(strongMatch && strongMatch.title !== q){
-      try{
-        var second = await fetchRawCandidates(strongMatch.title, 0);
-        allRaw = allRaw.concat(second.candidates);
-        sourceErrors = sourceErrors.concat(second.errors);
-      }catch(e){ /* 追加検索の失敗は無視して最初の結果だけ使う */ }
+    // （著者名だけで探すモードではタイトルの一致判定に意味がないためスキップする）
+    if(!authorOnlyMode){
+      var firstScored = allRaw
+        .map(function(c){ return { c: c, score: scorer(c) }; })
+        .filter(function(x){ return x.score !== null; })
+        .sort(function(a, b){ return b.score - a.score; });
+      var strongMatch = firstScored.length > 0 && firstScored[0].score >= 0.5 ? firstScored[0].c : null;
+      if(strongMatch && strongMatch.title !== q){
+        try{
+          var second = await fetchRawCandidates(strongMatch.title, 0);
+          allRaw = allRaw.concat(second.candidates);
+          sourceErrors = sourceErrors.concat(second.errors);
+        }catch(e){ /* 追加検索の失敗は無視して最初の結果だけ使う */ }
+      }
     }
 
     poolRawCandidates = allRaw;
 
     var authorFallbackUsed = false;
     var workingSet = allRaw;
-    if(poolAuthorQ){
+    if(poolAuthorQ && !authorOnlyMode){
       var filteredByAuthor = allRaw.filter(function(c){ return authorMatchesFilter(c, poolAuthorQ); });
       if(filteredByAuthor.length > 0){
         workingSet = filteredByAuthor;
@@ -802,20 +848,23 @@
       }
     }
 
-    var combined = await finalizeCandidates(workingSet, scorer, 0.18, 15);
+    var finalScorer = authorOnlyMode ? function(){ return 1; } : scorer;
+    var finalThreshold = authorOnlyMode ? 0 : 0.18;
+    var combined = await finalizeCandidates(workingSet, finalScorer, finalThreshold, authorOnlyMode ? 40 : 15);
     return { candidates: combined, errors: sourceErrors, authorFallbackUsed: authorFallbackUsed };
   }
 
   async function loadMoreCandidates(){
-    if(!poolQuery) return { candidates: [], errors: ['検索語がありません'] };
+    if(!poolQuery && !poolAuthorQ) return { candidates: [], errors: ['検索語がありません'] };
     var q = poolQuery;
+    var authorOnlyMode = !q && !!poolAuthorQ;
     var scorer = makeRelevanceScorer(q, poolAuthorQ);
     var page = poolPage;
     poolPage = page + 1;
 
     var next;
     try{
-      next = await fetchRawCandidates(q, page);
+      next = await fetchRawCandidates(q, page, poolAuthorQ);
     }catch(e){
       return { candidates: [], errors: ['候補の追加取得に失敗しました: ' + e.message] };
     }
@@ -823,13 +872,15 @@
     poolRawCandidates = poolRawCandidates.concat(next.candidates);
 
     var workingSet = poolRawCandidates;
-    if(poolAuthorQ){
+    if(poolAuthorQ && !authorOnlyMode){
       var filteredByAuthor = poolRawCandidates.filter(function(c){ return authorMatchesFilter(c, poolAuthorQ); });
       if(filteredByAuthor.length > 0) workingSet = filteredByAuthor;
     }
 
     // 「もっと探す」は基準を緩め、より多くの候補を表示する
-    var combined = await finalizeCandidates(workingSet, scorer, 0.1, 30);
+    var finalScorer = authorOnlyMode ? function(){ return 1; } : scorer;
+    var finalThreshold = authorOnlyMode ? 0 : 0.1;
+    var combined = await finalizeCandidates(workingSet, finalScorer, finalThreshold, authorOnlyMode ? 60 : 30);
     return { candidates: combined, errors: next.errors };
   }
 
@@ -906,12 +957,13 @@
   async function runSearch(isAuto){
     var q = searchInput.value.trim().replace(/[\s\u3000\u30FB\u3001\u3002]/g, '');
     var authorQ = authorFilterInput.value.trim();
-    if(!q){
+    if(!q && !authorQ){
       if(!isAuto) searchStatus.innerHTML = '<div class="search-status error">検索語を入力してください</div>';
       else { searchStatus.innerHTML = ''; searchResults.innerHTML = ''; loadMoreBtn.style.display = 'none'; }
       return;
     }
-    if(isAuto && q.length < 2){
+    var effectiveLength = q ? q.length : authorQ.length;
+    if(isAuto && effectiveLength < 2){
       searchStatus.innerHTML = '';
       searchResults.innerHTML = '';
       loadMoreBtn.style.display = 'none';
@@ -1204,6 +1256,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-15 #12</div>
+  <div class="build-info">更新: 2026-09-15 #13</div>
 </body>
 </html>
