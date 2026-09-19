@@ -670,7 +670,7 @@
   }
 
   function normalizeSearchText(t){
-    return (t || '').normalize('NFKC').toLowerCase().replace(/[\s「『【（(）】』」\u3000\u30FB]/g, '');
+    return (t || '').normalize('NFKC').toLowerCase().replace(/[\s「『【（(）】』」\u3000\u30FB\u3001\u3002]/g, '');
   }
   function makeRelevanceScorer(q, authorQ){
     var qLower = normalizeSearchText(q);
@@ -904,7 +904,7 @@
   var searchRequestSeq = 0;
 
   async function runSearch(isAuto){
-    var q = searchInput.value.trim().replace(/[\s\u3000\u30FB]/g, '');
+    var q = searchInput.value.trim().replace(/[\s\u3000\u30FB\u3001\u3002]/g, '');
     var authorQ = authorFilterInput.value.trim();
     if(!q){
       if(!isAuto) searchStatus.innerHTML = '<div class="search-status error">検索語を入力してください</div>';
@@ -1204,6 +1204,6 @@
   updateCoverPreview();
 })();
 </script>
-  <div class="build-info">更新: 2026-09-15 #11</div>
+  <div class="build-info">更新: 2026-09-15 #12</div>
 </body>
 </html>
