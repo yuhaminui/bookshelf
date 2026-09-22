@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>本棚</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23EAE3D2'/%3E%3Crect x='13' y='18' width='9' height='32' fill='%233E5443'/%3E%3Crect x='25' y='10' width='9' height='40' fill='%23A9762F'/%3E%3Crect x='37' y='22' width='9' height='28' fill='%232B2A22'/%3E%3Crect x='10' y='50' width='44' height='4' rx='1' fill='%236B6754'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#EAE3D2">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="本棚">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -1254,8 +1261,14 @@
   updateChoiceButtons(statusChoice, 'status', editingStatus);
   updateChoiceButtons(formatChoice, 'format', editingFormat);
   updateCoverPreview();
+
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('service-worker.js').catch(function(e){
+      console.error('service worker registration failed:', e);
+    });
+  }
 })();
 </script>
-  <div class="build-info">更新: 2026-09-20 #1</div>
+  <div class="build-info">更新: 2026-09-20 #2</div>
 </body>
 </html>
